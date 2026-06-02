@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <filter id="s" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#1f2937" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#s)">
+    <!-- 底座 -->
+    <path d="M26 78L64 56l38 22v30H26V78z" fill="#FFD93D" stroke="#1f2937" stroke-width="5" stroke-linejoin="round"/>
+    <!-- 屋顶 -->
+    <path d="M20 78L64 42l44 36" fill="#FF6B6B" stroke="#1f2937" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- 门 -->
+    <path d="M56 108V82c0-6 4-10 8-10s8 4 8 10v26" fill="#fff7e6" stroke="#1f2937" stroke-width="5" stroke-linejoin="round"/>
+    <!-- 窗 -->
+    <rect x="34" y="84" width="14" height="12" rx="3" fill="#fff7e6" stroke="#1f2937" stroke-width="5"/>
+    <rect x="80" y="84" width="14" height="12" rx="3" fill="#fff7e6" stroke="#1f2937" stroke-width="5"/>
+    <!-- 招牌 -->
+    <rect x="44" y="64" width="40" height="12" rx="6" fill="#4ecdc4" stroke="#1f2937" stroke-width="5"/>
+  </g>
+</svg>
+

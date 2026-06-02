@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <filter id="s" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#1f2937" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#s)">
+    <path d="M28 52h72v60H28V52z" fill="#2D2A32" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M28 52l18-20h36l18 20" fill="#3A0CA3" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="40" y="62" width="48" height="16" rx="8" fill="#F72585" stroke="#1f2937" stroke-width="6"/>
+    <rect x="40" y="62" width="48" height="16" rx="8" fill="none" stroke="#00F5D4" stroke-width="3"/>
+    <path d="M52 112V86h24v26" fill="#fff7e6" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="34" y="84" width="16" height="14" rx="4" fill="#00F5D4" fill-opacity="0.35" stroke="#1f2937" stroke-width="6"/>
+    <rect x="78" y="84" width="16" height="14" rx="4" fill="#00F5D4" fill-opacity="0.35" stroke="#1f2937" stroke-width="6"/>
+  </g>
+</svg>
+
