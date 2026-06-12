@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import maplibregl, { Map as MLMap, Marker } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
