@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Place } from "@/lib/types";
+import type { HouseConfig, Place } from "@/lib/types";
 
 type Props = {
   selected: Place | null;
@@ -26,6 +26,29 @@ function splitTags(s: string) {
     .slice(0, 20);
 }
 
+function featureLabel(f: string) {
+  return (
+    {
+      plant: "绿植",
+      lantern: "灯笼",
+      poster: "海报墙",
+      awning: "雨棚",
+      terrace: "外摆",
+      "window-grid": "格窗",
+      chimney: "烟囱",
+      bar: "吧台",
+      coffee: "咖啡",
+      spicy: "辣味",
+      noodle: "面食",
+      seafood: "海鲜",
+    }[f] ?? f
+  );
+}
+
+function lightingLabel(v?: string) {
+  return v === "neon" ? "霓虹" : v === "cool" ? "冷调" : v === "warm" ? "暖调" : "未生成";
+}
+
 export default function PlaceForm({ selected, onSaved }: Props) {
   const [inviteCode, setInviteCode] = useState<string>("");
   const [name, setName] = useState(selected?.name ?? "");
@@ -42,7 +65,7 @@ export default function PlaceForm({ selected, onSaved }: Props) {
   const [kwIconic, setKwIconic] = useState<string>("");
   const [kwStorefront, setKwStorefront] = useState<string>("");
   const [kwColorLight, setKwColorLight] = useState<string>("");
-  const [house, setHouse] = useState<Record<string, unknown>>(((selected as any)?.house ?? {}) as any);
+  const [house, setHouse] = useState<HouseConfig>((selected?.house ?? {}) as HouseConfig);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>("");
 
@@ -181,7 +204,7 @@ export default function PlaceForm({ selected, onSaved }: Props) {
         </div>
         <div>
           <label className="subtitle">人均（元）</label>
-          <input className="input" value={ppp} onChange={(e) => setPpp(Number(e.target.value))} placeholder="比如 120" />
+          <input className="input" value={ppp} onChange={(e) => setPpp(e.target.value)} placeholder="比如 120" />
         </div>
       </div>
 
@@ -246,7 +269,7 @@ export default function PlaceForm({ selected, onSaved }: Props) {
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data?.error || "生成失败");
                 setHouse(data.house);
-                setMsg(`已生成房子方案：${data.house?.template ?? ""} ✅`);
+                setMsg(`已生成房子方案：${data.house?.summary || data.house?.template || ""} ✅`);
               } catch (e: any) {
                 setMsg(e?.message || "生成失败");
               }
@@ -258,6 +281,63 @@ export default function PlaceForm({ selected, onSaved }: Props) {
             当前模板：{String((house as any)?.template || "未生成")}
           </span>
         </div>
+        {!!house?.template && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 12,
+              border: "3px solid rgba(31,41,55,0.12)",
+              borderRadius: 14,
+              background: "#fffaf2",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>房子方案预览</div>
+            <div className="subtitle" style={{ marginBottom: 8 }}>
+              {house.summary || "已生成房子方案"}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              {Object.entries(house.palette ?? {}).map(([key, value]) =>
+                typeof value === "string" ? (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      background: "#fff",
+                      border: "1px solid rgba(31,41,55,0.12)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 999,
+                        background: value,
+                        border: "1px solid rgba(31,41,55,0.18)",
+                        display: "inline-block",
+                      }}
+                    />
+                    <span className="subtitle">
+                      {key === "primary" ? "主色" : key === "secondary" ? "辅色" : "强调色"}
+                    </span>
+                  </div>
+                ) : null
+              )}
+            </div>
+            <div className="subtitle">
+              材质：{house.facade || "未生成"} · 屋顶：{house.roof || "未生成"} · 灯光：
+              {lightingLabel(house.lighting)}
+            </div>
+            {!!house.features?.length && (
+              <div className="subtitle" style={{ marginTop: 6 }}>
+                立面元素：{house.features.map(featureLabel).join("、")}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 10 }}>
@@ -294,4 +374,3 @@ export default function PlaceForm({ selected, onSaved }: Props) {
     </div>
   );
 }
-
