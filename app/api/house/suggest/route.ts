@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { HouseConfig, HouseFeature, HouseLighting, HouseMaterial, HouseRoof, HouseTemplate } from "@/lib/types";
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -32,7 +33,7 @@ function pickPalette(words: string[]) {
   return { primary: "#FF6B6B", secondary: "#1F2937", accent: "#FFD93D" };
 }
 
-function pickTemplate(words: string[]) {
+function pickTemplate(words: string[]): HouseTemplate {
   const has = (re: RegExp) => words.some((w) => re.test(w));
   if (has(/玻璃|落地窗|现代|ins|极简|minimal/i)) return "glass";
   if (has(/拱门|法式|欧式|brunch|咖啡/i)) return "arch";
@@ -41,18 +42,188 @@ function pickTemplate(words: string[]) {
   return "gable";
 }
 
-function pickStickers(words: string[]) {
-  const stickers: string[] = [];
-  const add = (re: RegExp, s: string) => {
-    if (words.some((w) => re.test(w))) stickers.push(s);
+function pickFeatures(words: string[]): HouseFeature[] {
+  const features: HouseFeature[] = [];
+  const add = (re: RegExp, s: HouseFeature) => {
+    if (features.includes(s)) return;
+    if (words.some((w) => re.test(w))) features.push(s);
   };
   add(/咖啡|cafe|coffee/i, "coffee");
   add(/酒吧|bar|pub|鸡尾酒/i, "bar");
   add(/花|植物|绿|garden/i, "plant");
+  add(/灯笼|中式|红灯/i, "lantern");
+  add(/海报|poster|墙/i, "poster");
+  add(/外摆|露台|terrace/i, "terrace");
+  add(/雨棚|棚|遮阳篷|awning/i, "awning");
+  add(/窗格|窗框|格窗/i, "window-grid");
+  add(/烟囱|壁炉/i, "chimney");
   add(/火锅|辣|川|湘/i, "spicy");
   add(/面|拉面|粉/i, "noodle");
   add(/海鲜|蟹|生蚝/i, "seafood");
-  return stickers.slice(0, 4);
+  return features.slice(0, 6);
+}
+
+function featureLabel(f: HouseFeature) {
+  return (
+    {
+      plant: "绿植",
+      lantern: "灯笼",
+      poster: "海报墙",
+      awning: "雨棚",
+      terrace: "外摆",
+      "window-grid": "格窗",
+      chimney: "烟囱",
+      bar: "吧台",
+      coffee: "咖啡标识",
+      spicy: "辣味元素",
+      noodle: "面食招贴",
+      seafood: "海鲜招贴",
+    }[f] ?? f
+  );
+}
+
+function pickMaterial(words: string[], template: HouseTemplate): HouseMaterial {
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (has(/砖|brick|工业/i)) return "brick";
+  if (has(/玻璃|通透|落地窗|现代/i)) return "glass";
+  if (has(/石|灰|岩|法式|欧式/i)) return "stone";
+  if (template === "glass") return "glass";
+  return "wood";
+}
+
+function pickRoof(words: string[], template: HouseTemplate): HouseTemplateimport { NextRequest, NextResponse } from "next/server";
+import type { HouseConfig, HouseFeature, HouseLighting, HouseMaterial, HouseRoof, HouseTemplate } from "@/lib/types";
+
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+type SuggestBody = {
+  ambiance?: string; // 氛围
+  iconic?: string; // 标志元素/装饰
+  storefront?: string; // 门头与材质
+  colorLight?: string; // 色彩与灯光（优先用于配色）
+};
+
+function pickPalette(words: string[]) {
+  // 非 AI 的“规则建议器”：可用，且可随时替换成真正 LLM/agent
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (has(/复古|老上海|怀旧|木|黄铜|爵士|vintage/i)) {
+    return { primary: "#C97C5D", secondary: "#2D2A32", accent: "#F2E9E4" };
+  }
+  if (has(/清新|白|日系|极简|minimal|muji/i)) {
+    return { primary: "#F8F9FA", secondary: "#2F3E46", accent: "#84A59D" };
+  }
+  if (has(/霓虹|夜|赛博|酒吧|neon|cyber/i)) {
+    return { primary: "#3A0CA3", secondary: "#00F5D4", accent: "#F72585" };
+  }
+  if (has(/花|植物|绿|庭院|露台|garden/i)) {
+    return { primary: "#2A9D8F", secondary: "#264653", accent: "#E9C46A" };
+  }
+  if (has(/火锅|红|辣|川|湘/i)) {
+    return { primary: "#E63946", secondary: "#1D3557", accent: "#F1FAEE" };
+  }
+  return { primary: "#FF6B6B", secondary: "#1F2937", accent: "#FFD93D" };
+}
+
+function pickTemplate(words: string[]): HouseTemplate {
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (has(/玻璃|落地窗|现代|ins|极简|minimal/i)) return "glass";
+  if (has(/拱门|法式|欧式|brunch|咖啡/i)) return "arch";
+  if (has(/屋顶|小屋|木|庭院|花园/i)) return "gable";
+  if (has(/夜|霓虹|酒吧|bar|pub/i)) return "neon";
+  return "gable";
+}
+
+function pickFeatures(words: string[]): HouseFeature[] {
+  const features: HouseFeature[] = [];
+  const add = (re: RegExp, s: HouseFeature) => {
+    if (features.includes(s)) return;
+    if (words.some((w) => re.test(w))) features.push(s);
+  };
+  add(/咖啡|cafe|coffee/i, "coffee");
+  add(/酒吧|bar|pub|鸡尾酒/i, "bar");
+  add(/花|植物|绿|garden/i, "plant");
+  add(/灯笼|中式|红灯/i, "lantern");
+  add(/海报|poster|墙/i, "poster");
+  add(/外摆|露台|terrace/i, "terrace");
+  add(/雨棚|棚|遮阳篷|awning/i, "awning");
+  add(/窗格|窗框|格窗/i, "window-grid");
+  add(/烟囱|壁炉/i, "chimney");
+  add(/火锅|辣|川|湘/i, "spicy");
+  add(/面|拉面|粉/i, "noodle");
+  add(/海鲜|蟹|生蚝/i, "seafood");
+  return features.slice(0, 6);
+}
+
+function featureLabel(f: HouseFeature) {
+  return (
+    {
+      plant: "绿植",
+      lantern: "灯笼",
+      poster: "海报墙",
+      awning: "雨棚",
+      terrace: "外摆",
+      "window-grid": "格窗",
+      chimney: "烟囱",
+      bar: "吧台",
+      coffee: "咖啡标识",
+      spicy: "辣味元素",
+      noodle: "面食招贴",
+      seafood: "海鲜招贴",
+    }[f] ?? f
+  );
+}
+
+function pickMaterial(words: string[], template: HouseTemplate): HouseMaterial {
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (has(/砖|brick|工业/i)) return "brick";
+  if (has(/玻璃|通透|落地窗|现代/i)) return "glass";
+  if (has(/石|灰|岩|法式|欧式/i)) return "stone";
+  if (template === "glass") return "glass";
+  return "wood";
+}
+
+function pickRoof(words: string[], template: HouseTemplate): HouseRoof {
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (template === "arch" || has(/拱|法式|欧式/i)) return "arch";
+  if (template === "glass" || has(/平顶|现代|极简/i)) return "flat";
+  return "gable";
+}
+
+function pickLighting(words: string[], template: HouseTemplate): HouseLighting {
+  const has = (re: RegExp) => words.some((w) => re.test(w));
+  if (template === "neon" || has(/霓虹|赛博|夜店|酒吧|发光/i)) return "neon";
+  if (has(/冷白|蓝|玻璃|科技|月光/i)) return "cool";
+  return "warm";
+}
+
+function pickSignText(words: string[], features: HouseFeature[]) {
+  if (features.includes("coffee")) return "咖";
+  if (features.includes("bar")) return "吧";
+  if (features.includes("spicy")) return "辣";
+  if (features.includes("noodle")) return "面";
+  if (features.includes("seafood")) return "鲜";
+  if (words.some((w) => /花|植物|garden/i.test(w))) return "花";
+  if (words.some((w) => /夜|霓虹|赛博/i.test(w))) return "夜";
+  return "店";
+}
+
+function summarizeHouse(template: HouseTemplate, material: HouseMaterial, lighting: HouseLighting, features: HouseFeature[]) {
+  const templateText =
+    template === "glass"
+      ? "通透橱窗型"
+      : template === "arch"
+        ? "拱门门头型"
+        : template === "neon"
+          ? "夜光霓虹型"
+          : "尖顶小屋型";
+  const materialText =
+    material === "brick" ? "砖面" : material === "glass" ? "玻璃" : material === "stone" ? "石材" : "木质";
+  const lightingText =
+    lighting === "neon" ? "霓虹灯光" : lighting === "cool" ? "冷调灯光" : "暖黄灯光";
+  const featureText = features.length ? `，点缀 ${features.slice(0, 3).map(featureLabel).join(" / ")}` : "";
+  return `${templateText}，${materialText}立面，${lightingText}${featureText}`;
 }
 
 function tokenize(s?: string) {
@@ -83,16 +254,31 @@ export async function POST(req: NextRequest) {
   // 规则：模板更受“门头与材质/标志元素”影响；配色优先看“色彩与灯光”
   const template = pickTemplate([...wSto, ...wIco, ...wAmb, ...wClr]);
   const palette = pickPalette(wClr.length ? [...wClr, ...wAmb, ...wIco] : wordsAll);
-  const stickers = pickStickers(wordsAll);
+  const features = pickFeatures(wordsAll);
+  const facade = pickMaterial([...wSto, ...wIco, ...wAmb], template);
+  const roof = pickRoof([...wSto, ...wIco, ...wAmb], template);
+  const lighting = pickLighting([...wClr, ...wAmb, ...wIco], template);
+  const signText = pickSignText(wordsAll, features);
 
-  const house = {
+  const house: HouseConfig = {
     template, // glass/arch/gable/neon
     palette, // primary/secondary/accent
     sign: {
       style: wordsAll.some((w) => /霓虹|neon/i.test(w)) ? "neon" : "wood",
+      text: signText,
     },
-    stickers,
-    // 这些参数后续可以扩展（窗户数量、屋顶颜色等）
+    roof,
+    facade,
+    lighting,
+    features,
+    stickers: features.slice(0, 4),
+    summary: summarizeHouse(template, facade, lighting, features),
+    keywords: {
+      ambiance: wAmb,
+      iconic: wIco,
+      storefront: wSto,
+      colorLight: wClr,
+    },
   };
 
   return json({ ok: true, house });
