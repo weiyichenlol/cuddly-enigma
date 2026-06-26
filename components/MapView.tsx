@@ -1,8 +1,8 @@
  "use client";
 
 import maplibregl, { Map as MLMap, Marker } from "maplibre-gl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Place } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { HouseConfig, HouseFeature, Place, PlaceSearchCandidate } from "@/lib/types";
 
 export type { Place };
 
@@ -18,8 +18,11 @@ export type LegoConfig = {
 
 type Props = {
   center: { lat: number; lng: number };
-  refreshKey: number;
+  items: Place[];
+  searchResults: PlaceSearchCandidate[];
+  focusTarget?: { id: string; lat: number; lng: number; zoom?: number } | null;
   onSelect: (p: Place) => void;
+  onPickSearchResult?: (candidate: PlaceSearchCandidate) => void;
   lego?: LegoConfig;
 };
 
@@ -35,13 +38,189 @@ function markerEl(kind: "food" | "coffee" | "bar" = "food") {
   return el;
 }
 
-function houseMarkerEl(template: string) {
+function searchMarkerEl(label: string, primary = false) {
+  const el = document.createElement("div");
+  el.style.width = "34px";
+  el.style.height = "34px";
+  el.style.borderRadius = "999px";
+  el.style.display = "grid";
+  el.style.placeItems = "center";
+  el.style.cursor = "pointer";
+  el.style.fontSize = "14px";
+  el.style.fontWeight = "900";
+  el.style.color = primary ? "#ffffff" : "#1f2937";
+  el.style.background = primary ? "#2563EB" : "#FEF3C7";
+  el.style.border = primary ? "3px solid #DBEAFE" : "3px solid #F59E0B";
+  el.style.boxShadow = "0 4px 0 rgba(31,41,55,0.18)";
+  el.textContent = label;
+  return el;
+}
+
+const DEFAULT_HOUSE_PALETTE = {
+  primary: "#FFD93D",
+  secondary: "#FF6B6B",
+  accent: "#4ECDC4",
+} as const;
+
+function safeHexColor(v: string | undefined, fallback: string) {
+  return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim() : fallback;
+}
+
+function escapeSvgText(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function featureIcon(feature: HouseFeature) {
+  return (
+    {
+      plant: "🌿",
+      lantern: "🏮",
+      poster: "🪧",
+      awning: "⛱",
+      terrace: "☕",
+      "window-grid": "🪟",
+      chimney: "🏠",
+      bar: "🍸",
+      coffee: "☕",
+      spicy: "🌶",
+      noodle: "🍜",
+      seafood: "🦐",
+    }[feature] ?? "⭐"
+  );
+}
+
+function featureLabel(feature: HouseFeature) {
+  return (
+    {
+      plant: "绿植",
+      lantern: "灯笼",
+      poster: "海报墙",
+      awning: "雨棚",
+      terrace: "外摆",
+      "window-grid": "格窗",
+      chimney: "烟囱",
+      bar: "吧台",
+      coffee: "咖啡",
+      spicy: "辣味",
+      noodle: "面食",
+      seafood: "海鲜",
+    }[feature] ?? feature
+  );
+}
+
+function normalizeHouse(house?: HouseConfig | null) {
+  const template = ["gable", "arch", "glass", "neon"].includes(String(house?.template))
+    ? (house?.template as "gable" | "arch" | "glass" | "neon")
+    : "gable";
+  const features = Array.isArray(house?.features)
+    ? house!.features.filter(Boolean).slice(0, 4)
+    : Array.isArray(house?.stickers)
+      ? (house!.stickers.filter(Boolean).slice(0, 4) as HouseFeature[])
+      : [];
+  return {
+    template,
+    palette: {
+      primary: safeHexColor(house?.palette?.primary, DEFAULT_HOUSE_PALETTE.primary),
+      secondary: safeHexColor(house?.palette?.secondary, DEFAULT_HOUSE_PALETTE.secondary),
+      accent: safeHexColor(house?.palette?.accent, DEFAULT_HOUSE_PALETTE.accent),
+    },
+    signStyle: house?.sign?.style === "neon" ? "neon" : "wood",
+    roof:
+      house?.roof === "arch" || house?.roof === "flat" || house?.roof === "gable"
+        ? house.roof
+        : template === "arch"
+          ? "arch"
+          : template === "glass"
+            ? "flat"
+            : "gable",
+    facade:
+      house?.facade === "brick" || house?.facade === "glass" || house?.facade === "stone" || house?.facade === "wood"
+        ? house.facade
+        : template === "glass"
+          ? "glass"
+          : "wood",
+    lighting:
+      house?.lighting === "cool" || house?.lighting === "neon" || house?.lighting === "warm"
+        ? house.lighting
+        : template === "neon"
+          ? "neon"
+          : "warm",
+    summary: house?.summary || "",
+    signText: (house?.sign?.text || "").trim(),
+    features,
+  };
+}
+
+function houseMarkerEl(house: HouseConfig, labelText?: string) {
+  const h = normalizeHouse(house);
+  const signText =
+    escapeSvgText((h.signText || labelText || "").trim().slice(0, 2) || (h.features[0] ? featureIcon(h.features[0]) : "店"));
+  const windowFill =
+    h.lighting === "neon" ? "rgba(0,245,212,0.42)" : h.lighting === "cool" ? "rgba(132,165,157,0.35)" : "#FFF7E6";
+  const signFill = h.signStyle === "neon" ? h.palette.accent : h.palette.accent;
+  const signStroke = h.signStyle === "neon" ? "#00F5D4" : "#1f2937";
+  const accentLine = h.lighting === "neon" ? `stroke="${h.palette.accent}" stroke-width="3"` : `stroke="#1f2937" stroke-width="5"`;
+  const roofShape =
+    h.roof === "flat"
+      ? `<rect x="28" y="36" width="72" height="14" rx="7" fill="${h.palette.secondary}" stroke="#1f2937" stroke-width="6"/>`
+      : h.roof === "arch"
+        ? `<path d="M30 58c10-18 26-28 34-28s24 10 34 28" fill="${h.palette.secondary}" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>`
+        : `<path d="M20 78L64 42l44 36" fill="${h.palette.secondary}" stroke="#1f2937" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const bodyShape =
+    h.template === "glass"
+      ? `<path d="M34 40h60v72H34V40z" fill="${h.palette.primary}" fill-opacity="0.32" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>`
+      : `<path d="M28 58h72v54H28V58z" fill="${h.palette.primary}" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>`;
+  const windowLines =
+    h.template === "glass" || h.features.includes("window-grid")
+      ? `<path d="M34 58h60" ${accentLine} stroke-linecap="round"/><path d="M34 76h60" ${accentLine} stroke-linecap="round"/><path d="M64 40v72" ${accentLine} stroke-linecap="round"/>`
+      : `<rect x="38" y="72" width="16" height="14" rx="4" fill="${windowFill}" stroke="#1f2937" stroke-width="5"/><rect x="74" y="72" width="16" height="14" rx="4" fill="${windowFill}" stroke="#1f2937" stroke-width="5"/>`;
+  const awning =
+    h.features.includes("awning") || h.template === "arch"
+      ? `<path d="M36 64h56l-6 12H42z" fill="${h.palette.accent}" stroke="#1f2937" stroke-width="5" stroke-linejoin="round"/>`
+      : "";
+  const chimney = h.features.includes("chimney")
+    ? `<path d="M86 38h10v18H86z" fill="${h.palette.accent}" stroke="#1f2937" stroke-width="5" stroke-linejoin="round"/>`
+    : "";
+  const plants = h.features.includes("plant")
+    ? `<circle cx="34" cy="102" r="8" fill="#6EE7B7" stroke="#1f2937" stroke-width="4"/><circle cx="94" cy="102" r="8" fill="#6EE7B7" stroke="#1f2937" stroke-width="4"/>`
+    : "";
+  const lanterns = h.features.includes("lantern")
+    ? `<circle cx="36" cy="70" r="6" fill="#EF4444" stroke="#1f2937" stroke-width="4"/><circle cx="92" cy="70" r="6" fill="#EF4444" stroke="#1f2937" stroke-width="4"/>`
+    : "";
+  const poster = h.features.includes("poster")
+    ? `<rect x="96" y="72" width="10" height="20" rx="3" fill="${h.palette.accent}" stroke="#1f2937" stroke-width="4"/>`
+    : "";
+  const terrace = h.features.includes("terrace")
+    ? `<path d="M28 112h72" stroke="#1f2937" stroke-width="5" stroke-linecap="round"/><path d="M40 108h48" stroke="${h.palette.accent}" stroke-width="4" stroke-linecap="round"/>`
+    : "";
   const el = document.createElement("div");
   el.style.width = "56px";
   el.style.height = "56px";
   el.style.cursor = "pointer";
-  const t = ["gable", "arch", "glass", "neon"].includes(template) ? template : "gable";
-  el.style.backgroundImage = `url(/markers/house-${t}.svg)`;
+  el.style.backgroundImage = `url("data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+      <defs>
+        <filter id="s" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#1f2937" flood-opacity="0.35"/>
+        </filter>
+      </defs>
+      <g filter="url(#s)">
+        ${roofShape}
+        ${bodyShape}
+        ${awning}
+        ${windowLines}
+        ${chimney}
+        <rect x="40" y="50" width="48" height="14" rx="7" fill="${signFill}" stroke="${signStroke}" stroke-width="5"/>
+        ${h.signStyle === "neon" ? `<rect x="40" y="50" width="48" height="14" rx="7" fill="none" stroke="${h.palette.secondary}" stroke-width="2.5"/>` : ""}
+        <text x="64" y="60" text-anchor="middle" dominant-baseline="middle" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="700" fill="${h.signStyle === "neon" ? "#FFF7E6" : "#1f2937"}">${signText}</text>
+        <path d="M52 112V88h24v24" fill="#FFF7E6" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>
+        ${plants}
+        ${lanterns}
+        ${poster}
+        ${terrace}
+      </g>
+    </svg>`
+  )}")`;
   el.style.backgroundSize = "contain";
   el.style.backgroundRepeat = "no-repeat";
   el.style.filter = "drop-shadow(3px 3px 0 rgba(31,41,55,0.25))";
@@ -281,20 +460,117 @@ function legoifyStyle(style: any, cfg: LegoConfig) {
 async function fetchJsonStyle(styleUrl: string) {
   const resp = await fetch(styleUrl, { cache: "force-cache" });
   if (!resp.ok) throw new Error(`style.json fetch failed: ${resp.status}`);
-  return (await resp.json()) as any;
+  const style = (await resp.json()) as any;
+
+  /**
+   * 关键兼容修复：
+   * 当我们把 style URL 拉下来并在前端 `setStyle(styleObject)` 时，
+   * style 内部的 sprite/glyphs/sources 可能是相对路径（或缺少 key 参数）。
+   * 相对路径在 setStyle(object) 模式下会被解析为“当前网页域名”，导致 glyphs 404，
+   * 最直观的现象就是：地图放大后道路/区域名称不显示。
+   *
+   * 这里统一把相关 URL 规范化为绝对地址，并尽量补齐 MapTiler 的 `?key=`。
+   */
+  return normalizeStyleUrls(style, styleUrl);
 }
 
-export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
+function isProbablyAbsoluteUrl(u: string) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(u) || u.startsWith("data:");
+}
+
+function resolveUrlMaybeRelative(u: string, base: string) {
+  if (!u || typeof u !== "string") return u;
+  if (isProbablyAbsoluteUrl(u)) return u;
+  // MapLibre/Mapbox 特殊 scheme：无法在这里可靠转换，交由上层处理/兜底
+  if (u.startsWith("mapbox://")) return u;
+  try {
+    return new URL(u, base).toString();
+  } catch {
+    return u;
+  }
+}
+
+function appendMapTilerKeyIfMissing(u: string, styleUrl: string) {
+  try {
+    const base = new URL(styleUrl);
+    const key = base.searchParams.get("key");
+    if (!key) return u;
+
+    const target = new URL(u);
+    const isMapTiler = /(^|\.)maptiler\.com$/i.test(target.hostname);
+    if (!isMapTiler) return u;
+    if (target.searchParams.get("key")) return u;
+    target.searchParams.set("key", key);
+    return target.toString();
+  } catch {
+    return u;
+  }
+}
+
+function normalizeStyleUrls(style: any, styleUrl: string) {
+  if (!style || typeof style !== "object") return style;
+  const s = JSON.parse(JSON.stringify(style));
+
+  // sprite / glyphs
+  if (typeof s.sprite === "string") {
+    s.sprite = appendMapTilerKeyIfMissing(resolveUrlMaybeRelative(s.sprite, styleUrl), styleUrl);
+  }
+  if (typeof s.glyphs === "string") {
+    // Mapbox 的 glyph scheme 在 MapLibre 中通常不可用；优先切到 OpenMapTiles 公共字体服务
+    if (s.glyphs.startsWith("mapbox://")) {
+      s.glyphs = "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
+    } else {
+      s.glyphs = appendMapTilerKeyIfMissing(resolveUrlMaybeRelative(s.glyphs, styleUrl), styleUrl);
+    }
+  } else if (!s.glyphs) {
+    // 没有 glyphs 时给一个兜底，避免文字层直接不渲染
+    s.glyphs = "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
+  }
+
+  // sources
+  if (s.sources && typeof s.sources === "object") {
+    for (const k of Object.keys(s.sources)) {
+      const src = s.sources[k];
+      if (!src || typeof src !== "object") continue;
+
+      if (typeof src.url === "string") {
+        src.url = appendMapTilerKeyIfMissing(resolveUrlMaybeRelative(src.url, styleUrl), styleUrl);
+      }
+      if (typeof src.data === "string") {
+        src.data = resolveUrlMaybeRelative(src.data, styleUrl);
+      }
+      if (Array.isArray(src.tiles)) {
+        src.tiles = src.tiles.map((t: any) =>
+          typeof t === "string"
+            ? appendMapTilerKeyIfMissing(resolveUrlMaybeRelative(t, styleUrl), styleUrl)
+            : t
+        );
+      }
+    }
+  }
+
+  return s;
+}
+
+export default function MapView({
+  center,
+  items,
+  searchResults,
+  focusTarget,
+  onSelect,
+  onPickSearchResult,
+  lego,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const popupRef = useRef<maplibregl.Popup | null>(null);
-  const [items, setItems] = useState<Place[]>([]);
 
   const baseStyleRef = useRef<any | null>(null);
   const lastStyleUrlRef = useRef<string>("");
   const styleApplyTimerRef = useRef<number | null>(null);
   const styleApplySeqRef = useRef(0);
+  const lastFocusIdRef = useRef<string>("");
 
   const styleUrl = useMemo(() => process.env.NEXT_PUBLIC_MAP_STYLE_URL || "", []);
   const legoEnabled = lego?.enabled ?? false;
@@ -340,6 +616,53 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
       if (p.tags?.length) parts.push(p.tags.slice(0, 6).join(" · "));
       meta.textContent = parts.join("  |  ");
       if (meta.textContent) wrap.appendChild(meta);
+
+      const house = p.house as HouseConfig | undefined;
+      if (house?.template) {
+        const normalized = normalizeHouse(house);
+        const houseBox = document.createElement("div");
+        houseBox.style.fontSize = "12px";
+        houseBox.style.marginBottom = "8px";
+        houseBox.style.padding = "8px";
+        houseBox.style.borderRadius = "10px";
+        houseBox.style.background = "#FFF7E6";
+        houseBox.style.border = "1px solid rgba(31,41,55,0.12)";
+
+        const summary = document.createElement("div");
+        summary.style.fontWeight = "700";
+        summary.style.marginBottom = "6px";
+        summary.textContent = normalized.summary || `房子模板：${normalized.template}`;
+        houseBox.appendChild(summary);
+
+        const featureText = normalized.features.length
+          ? normalized.features.map(featureLabel).join(" · ")
+          : "无额外立面元素";
+        const detail = document.createElement("div");
+        detail.style.opacity = "0.88";
+        detail.textContent = `材质 ${normalized.facade} · 灯光 ${normalized.lighting} · ${featureText}`;
+        houseBox.appendChild(detail);
+
+        const palette = document.createElement("div");
+        palette.style.display = "flex";
+        palette.style.gap = "6px";
+        palette.style.marginTop = "6px";
+        for (const color of [
+          normalized.palette.primary,
+          normalized.palette.secondary,
+          normalized.palette.accent,
+        ]) {
+          const chip = document.createElement("span");
+          chip.style.width = "14px";
+          chip.style.height = "14px";
+          chip.style.display = "inline-block";
+          chip.style.borderRadius = "999px";
+          chip.style.background = color;
+          chip.style.border = "1px solid rgba(31,41,55,0.18)";
+          palette.appendChild(chip);
+        }
+        houseBox.appendChild(palette);
+        wrap.appendChild(houseBox);
+      }
 
       if (p.dishes?.length) {
         const d = document.createElement("div");
@@ -403,6 +726,62 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
         .addTo(map);
     },
     [onSelect]
+  );
+
+  const openSearchPopup = useCallback(
+    (candidate: PlaceSearchCandidate, index: number) => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      popupRef.current?.remove();
+
+      const wrap = document.createElement("div");
+      wrap.style.fontFamily =
+        'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+      wrap.style.maxWidth = "240px";
+
+      const title = document.createElement("div");
+      title.textContent = `候选 ${index + 1} · ${candidate.name}`;
+      title.style.fontWeight = "900";
+      title.style.fontSize = "14px";
+      title.style.marginBottom = "6px";
+      wrap.appendChild(title);
+
+      const addr = document.createElement("div");
+      addr.textContent = candidate.address;
+      addr.style.fontSize = "12px";
+      addr.style.opacity = "0.85";
+      addr.style.marginBottom = "8px";
+      wrap.appendChild(addr);
+
+      const btn = document.createElement("button");
+      btn.textContent = "用这个位置";
+      btn.style.border = "1px solid rgba(31,41,55,0.25)";
+      btn.style.borderRadius = "10px";
+      btn.style.padding = "6px 10px";
+      btn.style.background = "#fff";
+      btn.style.cursor = "pointer";
+      btn.style.fontSize = "12px";
+      btn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        popupRef.current?.remove();
+        popupRef.current = null;
+        onPickSearchResult?.(candidate);
+      };
+      wrap.appendChild(btn);
+
+      popupRef.current = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        offset: 16,
+        maxWidth: "240px",
+      })
+        .setLngLat([candidate.lng, candidate.lat])
+        .setDOMContent(wrap)
+        .addTo(map);
+    },
+    [onPickSearchResult]
   );
 
   useEffect(() => {
@@ -505,17 +884,6 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
     };
   }, [legoEnabled, legoDensity, legoStroke, legoSaturation, styleUrl]);
 
-  async function load() {
-    const resp = await fetch("/api/places", { cache: "no-store" });
-    const data = (await resp.json()) as { items: Place[] };
-    setItems(Array.isArray(data.items) ? data.items : []);
-  }
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
-
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -524,8 +892,8 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
     markersRef.current = [];
 
     for (const p of items) {
-      const house = (p as any).house as any;
-      const template = house?.template as string | undefined;
+      const house = (p.house ?? {}) as HouseConfig;
+      const template = house?.template;
       const kind: "food" | "coffee" | "bar" =
         p.tags?.some((t) => /咖啡|cafe|coffee/i.test(t))
           ? "coffee"
@@ -533,7 +901,7 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
             ? "bar"
             : "food";
 
-      const el = template ? houseMarkerEl(template) : markerEl(kind);
+      const el = template ? houseMarkerEl(house, p.name) : markerEl(kind);
       const m = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.lng, p.lat])
         .addTo(map);
@@ -545,7 +913,35 @@ export default function MapView({ center, refreshKey, onSelect, lego }: Props) {
 
       markersRef.current.push(m);
     }
-  }, [items, openPopup]);
+
+    for (const [index, candidate] of searchResults.entries()) {
+      const m = new maplibregl.Marker({
+        element: searchMarkerEl(String(index + 1), index === 0),
+        anchor: "center",
+      })
+        .setLngLat([candidate.lng, candidate.lat])
+        .addTo(map);
+
+      m.getElement().addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        openSearchPopup(candidate, index);
+      });
+
+      markersRef.current.push(m);
+    }
+  }, [items, openPopup, openSearchPopup, searchResults]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusTarget) return;
+    if (lastFocusIdRef.current === focusTarget.id) return;
+    lastFocusIdRef.current = focusTarget.id;
+    map.flyTo({
+      center: [focusTarget.lng, focusTarget.lat],
+      zoom: focusTarget.zoom ?? Math.max(map.getZoom(), 16),
+      essential: true,
+    });
+  }, [focusTarget]);
 
   return <div ref={containerRef} className="mapCanvas" />;
 }
